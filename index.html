@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Staff → Tab</title>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="tab-converter.js"></script>
+</head>
+<body>
+
+<header>
+  <h1>Staff <em>→</em> Tab</h1>
+  <a class="nav-link" href="tab-converter.html">← tab → Tab</a>
+   <a class="nav-link" href="tab-staff.html">← tab → Staff</a>
+</header>
+
+<main>
+  <!-- LEFT COLUMN: Staff input -->
+  <div class="left-col">
+    <div class="staff-section">
+      <div class="staff-toolbar">
+        <span class="staff-toolbar-group">
+          <label>Mode</label>
+          <button class="dur-btn active" id="mode-note" onclick="setMode('note')" title="Place notes">♩ Note</button>
+          <button class="dur-btn" id="mode-bar" onclick="setMode('bar')" title="Place barline">𝄀 Bar</button>
+        </span>
+
+        <span class="staff-toolbar-sep"></span>
+
+        <span class="staff-toolbar-group">
+          <label>Accidental</label>
+          <div class="accidental-group">
+            <button class="acc-btn" id="acc-flat" onclick="setAccidental('b')" title="Flat">♭</button>
+            <button class="acc-btn active" id="acc-nat" onclick="setAccidental('')" title="Natural">♮</button>
+            <button class="acc-btn" id="acc-sharp" onclick="setAccidental('#')" title="Sharp">♯</button>
+          </div>
+        </span>
+
+        <span class="staff-toolbar-sep"></span>
+
+        <span class="staff-toolbar-group">
+          <label>Duration</label>
+          <div class="dur-group">
+            <button class="dur-btn active" id="dur-w" onclick="setDuration('w')" title="Whole note" style="font-family:'EB Garamond',serif;font-style:italic;font-size:0.9rem;letter-spacing:0">W</button>
+            <button class="dur-btn" id="dur-h" onclick="setDuration('h')" title="Half note" style="font-family:'EB Garamond',serif;font-style:italic;font-size:0.9rem;letter-spacing:0">H</button>
+            <button class="dur-btn" id="dur-q" onclick="setDuration('q')" title="Quarter note">♩</button>
+            <button class="dur-btn" id="dur-e" onclick="setDuration('e')" title="Eighth note">♪</button>
+          </div>
+        </span>
+
+        <span class="staff-toolbar-sep"></span>
+
+        <span class="staff-toolbar-group" style="margin-left:auto">
+          <button class="dur-btn" onclick="addSystem()" title="Add a grand staff row">+ Staff</button>
+          <button class="btn-del" onclick="deleteLastNote()">⌫ Delete</button>
+          <button class="btn-clear" onclick="clearAll()">Clear</button>
+          <button class="btn-convert" onclick="convertToTab()">Convert →</button>
+        </span>
+      </div>
+
+      <div class="staff-canvas-wrap">
+        <canvas id="grandCanvas" width="1200" height="980"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT COLUMN: Tab outputs -->
+  <div class="right-col">
+    <div class="tab-section">
+      <div class="tab-header">
+        <h2>Tab Output</h2>
+        <div class="transpose-controls">
+          <label>Instrument</label>
+          <select id="tabTuningSelect" onchange="onTabTuningChange()" style="font-size:0.75rem;padding:0.3rem 0.6rem;">
+            <optgroup label="Guitar">
+              <option value="standard">Guitar — Standard:  E A D G B e</option>
+              <option value="dropD">Guitar — Drop D:  D A D G B e</option>
+              <option value="openG">Guitar — Open G:  D G D G B D</option>
+              <option value="openE">Guitar — Open E:  E B E G# B E</option>
+              <option value="dadgad">Guitar — DADGAD:  D A D G A D</option>
+              <option value="crowder">Guitar — Crowder:  E A E E B E</option>
+            </optgroup>
+            <optgroup label="Strings">
+              <option value="violin">Violin:  G D A E</option>
+              <option value="viola">Viola:  C G D A</option>
+              <option value="cello">Cello:  C G D A</option>
+            </optgroup>
+          </select>
+          <label style="margin-left:0.5rem">Octave</label>
+          <button class="transpose-btn" onclick="adjustOctave(-1)" title="Down 1 octave">−</button>
+          <div class="transpose-display" id="octaveDisplay"><span class="offset-zero">0</span></div>
+          <button class="transpose-btn" onclick="adjustOctave(1)" title="Up 1 octave">+</button>
+          <button class="transpose-reset" onclick="resetOctave()">reset</button>
+          <label style="margin-left:0.5rem">Semitones</label>
+          <button class="transpose-btn" onclick="adjustTabTranspose(-1)" title="Down 1 semitone">−</button>
+          <div class="transpose-display" id="tabTransposeDisplay"><span class="offset-zero">0 semitones</span></div>
+          <button class="transpose-btn" onclick="adjustTabTranspose(1)" title="Up 1 semitone">+</button>
+          <button class="transpose-reset" onclick="resetTabTranspose()">reset</button>
+        </div>
+      </div>
+      <div class="tab-output" id="tabOutput">
+        <span class="hint">Place notes on the staff, then click Convert →</span>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="status-bar" id="statusBar">
+  <div>Treble notes: <span id="trebleCount">0</span></div>
+  <div>Bass notes: <span id="bassCount">0</span></div>
+  <div id="hoverNote" style="margin-left:auto"></div>
+</div>
+
+<script>
+// ─── State ─────────────────────────────────────────────────────────────────
+let accidental = '';
+let duration = 'w';
+let inputMode = 'note';   // 'note' | 'bar'
+let octaveOffset = 0;     // -2 to +2 octaves, applied at conversion
+let tabTransposeOffset = 0;
+let tabTuningKey = 'standard';
+let trebleNotes = [];
+let bassNotes = [];
+let barlines = [];  // array of x positions (shared across both staves)
+
+// Tuning data and conversion functions are loaded from tab-converter.js
+
+// ─── Staff Layout ───────────────────────────────────────────────────────────
+let NUM_SYSTEMS   = 4;            // number of grand-staff rows
+const STAFF = {
+  lineGap:     14,               // px between staff lines
+  leftPad:     90,               // space for brace + clef symbols
+  noteRadius:  6,
+  beatWidth:   48,               // px per beat slot within a system
+  sysMargin:   30,               // px above first system / between systems
+  trebleRelTop: 0,               // treble top relative to system top
+  bassRelTop:   4 * 14 + 28,    // bass top relative to system top (= 84); gap = 4 diatonic steps × 7px so middle C aligns on both staves
+  get sysHeight() {
+    return this.bassRelTop + 4 * this.lineGap + 40;
+  },
+  trebleTop(sys) { return this.sysMargin + sys * (this.sysHeight + this.sysMargin); },
+  bassTop(sys)   { return this.trebleTop(sys) + this.bassRelTop; },
+};
+
+// Beats per system: fill from leftPad+20 to canvas right edge minus margin
+// Computed after canvas is available; placeholder updated in init.
+let BEATS_PER_SYS = 8;
+
+// Treble: note positions relative to top staff line (line 0 = E5, counting up = higher)
+// We encode each position as steps from a reference.
+// Treble clef lines (bottom to top): E4, G4, B4, D5, F5
+// Spaces (bottom to top): F4, A4, C5, E5
+// We'll map y-click to note name + octave.
+
+// Each "slot" on the staff = one diatonic step
+// For treble: top line = F5, slot 0 (topmost)
+// slot increments downward: F5, E5, D5, C5, B4, A4, G4, F4, E4, D4, C4...
+// We extend with ledger lines above and below.
+
+// Treble clef reference: slot 0 at treble top line → F5
+const TREBLE_REF = { note: 'F', octave: 5, slotAtTop: 0 };
+// Bass clef reference: slot 0 at bass top line → A3
+const BASS_REF   = { note: 'A', octave: 3, slotAtTop: 0 };
+
+const NOTE_NAMES = ['C','D','E','F','G','A','B'];
+
+function slotToNote(slot, ref) {
+  const refIdx = NOTE_NAMES.indexOf(ref.note);
+  let noteIdx = refIdx - slot;
+  let octave = ref.octave;
+  while (noteIdx < 0) { noteIdx += 7; octave--; }
+  while (noteIdx >= 7) { noteIdx -= 7; octave++; }
+  return { note: NOTE_NAMES[noteIdx], octave };
+}
+
+// ─── Canvas Setup ──────────────────────────────────────────────────────────
+const grandCanvas = document.getElementById('grandCanvas');
+const ctx = grandCanvas.getContext('2d');
+
+// ── System/coordinate helpers ──────────────────────────────────────────────
+// A note's canvas X encodes both system and beat:
+//   globalBeat  = Math.round((x - firstBeatX) / beatWidth)  [0-based across all systems]
+//   sys         = Math.floor(globalBeat / BEATS_PER_SYS)
+//   localBeat   = globalBeat % BEATS_PER_SYS
+//   canvasX     = STAFF.leftPad + 20 + localBeat * STAFF.beatWidth
+//   canvasY     = depends on sys + clef
+
+let FIRST_BEAT_X = STAFF.leftPad + 20;
+
+function sysForCanvasY(y) {
+  // Which system row does this y belong to?
+  for (let s = NUM_SYSTEMS - 1; s >= 0; s--) {
+    if (y >= STAFF.trebleTop(s) - STAFF.sysMargin / 2) return s;
+  }
+  return 0;
+}
+
+function clefForY(y) {
+  const sys = sysForCanvasY(y);
+  const splitY = (STAFF.trebleTop(sys) + 4 * STAFF.lineGap + STAFF.bassTop(sys)) / 2;
+  return y < splitY ? 'treble' : 'bass';
+}
+
+function staffTopForClef(clef, sys) {
+  return clef === 'treble' ? STAFF.trebleTop(sys) : STAFF.bassTop(sys);
+}
+
+function getSlotY(slot, clef, sys) {
+  return staffTopForClef(clef, sys) + slot * (STAFF.lineGap / 2);
+}
+
+function yToSlot(y, clef, sys) {
+  return Math.round((y - staffTopForClef(clef, sys)) / (STAFF.lineGap / 2));
+}
+
+// Convert a stored note x → { sys, localX }
+// Notes store a "globalX" that encodes system + local beat position
+function globalXToSysLocal(gx) {
+  const beat = Math.round((gx - FIRST_BEAT_X) / STAFF.beatWidth);
+  const sys  = Math.floor(beat / BEATS_PER_SYS);
+  const local = beat % BEATS_PER_SYS;
+  const localX = FIRST_BEAT_X + local * STAFF.beatWidth;
+  return { sys: Math.max(0, Math.min(sys, NUM_SYSTEMS - 1)), localX };
+}
+
+function snapGlobalX(rawCanvasX, rawCanvasY) {
+  const sys = sysForCanvasY(rawCanvasY);
+  const local = Math.round((rawCanvasX - FIRST_BEAT_X) / STAFF.beatWidth);
+  const clampedLocal = Math.max(0, Math.min(local, BEATS_PER_SYS - 1));
+  const globalBeat = sys * BEATS_PER_SYS + clampedLocal;
+  return FIRST_BEAT_X + globalBeat * STAFF.beatWidth; // global X
+}
+
+// ── Drawing ────────────────────────────────────────────────────────────────
+function drawOneSysStaff(sys, clef) {
+  const top = staffTopForClef(clef, sys);
+  const W = grandCanvas.width;
+  ctx.strokeStyle = 'rgba(220,210,180,0.5)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 5; i++) {
+    const y = top + i * STAFF.lineGap;
+    ctx.beginPath();
+    ctx.moveTo(STAFF.leftPad - 10, y);
+    ctx.lineTo(W - 20, y);
+    ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(220,210,180,0.78)';
+  ctx.textBaseline = 'middle';
+  if (clef === 'treble') {
+    ctx.font = '72px serif';
+    ctx.fillText('𝄞', 18, top + STAFF.lineGap * 2.2);
+  } else {
+    ctx.font = '54px serif';
+    ctx.fillText('𝄢', 22, top + STAFF.lineGap * 1.5);
+  }
+}
+
+function drawGrandStaff() {
+  const W = grandCanvas.width;
+  const H = grandCanvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  for (let sys = 0; sys < NUM_SYSTEMS; sys++) {
+    const tTop = STAFF.trebleTop(sys);
+    const bBot = STAFF.bassTop(sys) + 4 * STAFF.lineGap;
+
+    drawOneSysStaff(sys, 'treble');
+    drawOneSysStaff(sys, 'bass');
+
+    // Brace
+    const bx = 12, bTop = tTop, bBot2 = bBot;
+    ctx.strokeStyle = 'rgba(220,210,180,0.5)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(bx + 6, bTop);
+    ctx.bezierCurveTo(bx - 10, bTop + (bBot2 - bTop) * 0.25,
+                      bx - 10, bBot2 - (bBot2 - bTop) * 0.25,
+                      bx + 6, bBot2);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+
+    // Opening barline spanning both staves
+    ctx.strokeStyle = 'rgba(220,210,180,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(STAFF.leftPad - 10, tTop);
+    ctx.lineTo(STAFF.leftPad - 10, bBot);
+    ctx.stroke();
+
+    // Closing barline at end of system
+    ctx.beginPath();
+    ctx.moveTo(W - 20, tTop);
+    ctx.lineTo(W - 20, bBot);
+    ctx.stroke();
+
+    // System number label (subtle)
+    ctx.fillStyle = 'rgba(220,210,180,0.2)';
+    ctx.font = '10px JetBrains Mono, monospace';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`sys ${sys + 1}`, W - 16, tTop);
+
+    // Middle C dashed guide between treble and bass
+    const midCy = getSlotY(10, 'treble', sys);
+    ctx.strokeStyle = 'rgba(220,210,180,0.1)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 6]);
+    ctx.beginPath();
+    ctx.moveTo(STAFF.leftPad - 10, midCy);
+    ctx.lineTo(W - 20, midCy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+function drawNote(gx, slot, acc, dur, selected, clef) {
+  const { sys, localX: x } = globalXToSysLocal(gx);
+  const y = getSlotY(slot, clef, sys);
+  const r = STAFF.noteRadius;
+
+  // Ledger lines
+  ctx.strokeStyle = 'rgba(220,210,180,0.45)';
+  ctx.lineWidth = 1;
+  for (let s = 10; s <= slot; s += 2) {
+    const ly = getSlotY(s, clef, sys);
+    ctx.beginPath(); ctx.moveTo(x - r - 4, ly); ctx.lineTo(x + r + 4, ly); ctx.stroke();
+  }
+  for (let s = -2; s >= slot; s -= 2) {
+    const ly = getSlotY(s, clef, sys);
+    ctx.beginPath(); ctx.moveTo(x - r - 4, ly); ctx.lineTo(x + r + 4, ly); ctx.stroke();
+  }
+
+  // Stem
+  const isOpen = dur === 'w' || dur === 'h';
+  ctx.strokeStyle = selected ? '#c8a84b' : 'rgba(220,210,180,0.7)';
+  ctx.lineWidth = 1.5;
+  if (dur !== 'w') {
+    const stemDir = slot <= 4 ? 1 : -1;
+    ctx.beginPath();
+    ctx.moveTo(x + r - 1, y);
+    ctx.lineTo(x + r - 1, y + stemDir * 30);
+    ctx.stroke();
+  }
+
+  // Note head
+  ctx.fillStyle = selected ? '#c8a84b' : 'rgba(220,210,180,0.88)';
+  ctx.strokeStyle = selected ? '#c8a84b' : 'rgba(220,210,180,0.88)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  if (isOpen) {
+    ctx.ellipse(x, y, r + 1, r - 1.5, -0.2, 0, Math.PI * 2);
+    ctx.stroke();
+  } else {
+    ctx.ellipse(x, y, r + 1, r - 1.5, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Eighth flag
+  if (dur === 'e') {
+    ctx.strokeStyle = selected ? '#c8a84b' : 'rgba(220,210,180,0.7)';
+    const stemDir = slot <= 4 ? 1 : -1;
+    const topY = y + stemDir * 30;
+    ctx.beginPath();
+    ctx.moveTo(x + r - 1, topY);
+    ctx.quadraticCurveTo(x + r + 14, topY + stemDir * 10, x + r + 8, topY + stemDir * 20);
+    ctx.stroke();
+  }
+
+  // Accidental
+  if (acc) {
+    ctx.fillStyle = selected ? '#c8a84b' : 'rgba(220,210,180,0.75)';
+    ctx.font = '14px serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(acc === '#' ? '♯' : '♭', x - r - 14, y);
+  }
+
+  // Note label
+  const ref = clef === 'treble' ? TREBLE_REF : BASS_REF;
+  const { note, octave: oc } = slotToNote(slot, ref);
+  ctx.fillStyle = selected ? 'rgba(200,168,75,0.7)' : 'rgba(220,210,180,0.35)';
+  ctx.font = '9px JetBrains Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText(note + (acc||'') + oc, x, y + r + 3);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawGhostNote(localX, slot, acc, clef, sys) {
+  const y = getSlotY(slot, clef, sys);
+  const r = STAFF.noteRadius;
+  const ref = clef === 'treble' ? TREBLE_REF : BASS_REF;
+
+  // Horizontal guide line across this system's staff
+  ctx.strokeStyle = 'rgba(200,168,75,0.18)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(STAFF.leftPad - 10, y);
+  ctx.lineTo(grandCanvas.width - 20, y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Ghost ledger lines
+  ctx.strokeStyle = 'rgba(200,168,75,0.4)';
+  ctx.lineWidth = 1;
+  for (let s = 10; s <= slot; s += 2) {
+    const ly = getSlotY(s, clef, sys);
+    ctx.beginPath(); ctx.moveTo(localX - r - 5, ly); ctx.lineTo(localX + r + 5, ly); ctx.stroke();
+  }
+  for (let s = -2; s >= slot; s -= 2) {
+    const ly = getSlotY(s, clef, sys);
+    ctx.beginPath(); ctx.moveTo(localX - r - 5, ly); ctx.lineTo(localX + r + 5, ly); ctx.stroke();
+  }
+
+  // Ghost note head
+  ctx.strokeStyle = 'rgba(200,168,75,0.7)';
+  ctx.fillStyle = 'rgba(200,168,75,0.18)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(localX, y, r + 1, r - 1.5, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Note label
+  const { note, octave } = slotToNote(slot, ref);
+  const label = note + (acc === '#' ? '♯' : acc === 'b' ? '♭' : '') + octave;
+  ctx.font = 'bold 11px JetBrains Mono, monospace';
+  ctx.fillStyle = 'rgba(200,168,75,0.9)';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = slot <= 4 ? 'bottom' : 'top';
+  ctx.fillText(label, localX, slot <= 4 ? y - r - 5 : y + r + 5);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+
+  if (acc) {
+    ctx.fillStyle = 'rgba(200,168,75,0.75)';
+    ctx.font = '14px serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(acc === '#' ? '♯' : '♭', localX - r - 14, y);
+    ctx.textBaseline = 'alphabetic';
+  }
+}
+
+function drawGhostBarline(localX, sys) {
+  const tTop = STAFF.trebleTop(sys);
+  const bBot = STAFF.bassTop(sys) + 4 * STAFF.lineGap;
+  ctx.strokeStyle = 'rgba(200,168,75,0.55)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath();
+  ctx.moveTo(localX, tTop - 10);
+  ctx.lineTo(localX, bBot + 10);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawGrandBarlines() {
+  // Barlines stored as globalX; render per system
+  barlines.forEach(gx => {
+    const { sys, localX } = globalXToSysLocal(gx);
+    const tTop = STAFF.trebleTop(sys);
+    const bBot = STAFF.bassTop(sys) + 4 * STAFF.lineGap;
+    ctx.strokeStyle = 'rgba(220,210,180,0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(localX, tTop);
+    ctx.lineTo(localX, bBot);
+    ctx.stroke();
+  });
+}
+
+function redrawAll(hover) {
+  drawGrandStaff();
+  drawGrandBarlines();
+  trebleNotes.forEach(n => drawNote(n.x, n.slot, n.accidental, n.duration, n.selected, 'treble'));
+  bassNotes.forEach(n   => drawNote(n.x, n.slot, n.accidental, n.duration, n.selected, 'bass'));
+  if (hover && !hover.barline) {
+    drawGhostNote(hover.localX, hover.slot, accidental, hover.clef, hover.sys);
+  }
+  if (hover && hover.barline) {
+    drawGhostBarline(hover.localX, hover.sys);
+  }
+}
+
+// ─── Hover State ───────────────────────────────────────────────────────────
+let hoverState = null; // { clef, slot, x } or { clef, barline:true, x } or null
+
+// ─── Click Handling ────────────────────────────────────────────────────────
+function getCanvasCoords(e) {
+  const rect = grandCanvas.getBoundingClientRect();
+  const scaleX = grandCanvas.width / rect.width;
+  const scaleY = grandCanvas.height / rect.height;
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY,
+  };
+}
+
+grandCanvas.addEventListener('click', (e) => {
+  const { x, y } = getCanvasCoords(e);
+  if (x < STAFF.leftPad) return;
+
+  const sys    = sysForCanvasY(y);
+  const gx     = snapGlobalX(x, y);
+  const { localX } = globalXToSysLocal(gx);
+
+  if (inputMode === 'bar') {
+    if (!barlines.includes(gx)) {
+      barlines.push(gx);
+      barlines.sort((a, b) => a - b);
+    }
+    redrawAll(hoverState);
+    return;
+  }
+
+  const clef  = clefForY(y);
+  const notes = clef === 'treble' ? trebleNotes : bassNotes;
+  const ref   = clef === 'treble' ? TREBLE_REF  : BASS_REF;
+  const slot  = yToSlot(y, clef, sys);
+  if (slot < -6 || slot > 14) return;
+
+  trebleNotes.forEach(n => n.selected = false);
+  bassNotes.forEach(n => n.selected = false);
+  notes.push({
+    slot, x: gx, accidental, duration, selected: true,
+    ...slotToNote(slot, ref),
+  });
+  notes.sort((a, b) => a.x - b.x);
+  redrawAll(hoverState);
+  updateStatus();
+});
+
+grandCanvas.addEventListener('mousemove', (e) => {
+  const { x, y } = getCanvasCoords(e);
+  const statusEl = document.getElementById('hoverNote');
+  if (x < STAFF.leftPad) { hoverState = null; redrawAll(null); statusEl.textContent = ''; return; }
+
+  const sys       = sysForCanvasY(y);
+  const gx        = snapGlobalX(x, y);
+  const { localX } = globalXToSysLocal(gx);
+
+  if (inputMode === 'bar') {
+    hoverState = { barline: true, localX, sys };
+    redrawAll(hoverState);
+    statusEl.textContent = '→ Barline';
+    return;
+  }
+
+  const clef = clefForY(y);
+  const ref  = clef === 'treble' ? TREBLE_REF : BASS_REF;
+  const slot = yToSlot(y, clef, sys);
+  if (slot < -6 || slot > 14) { hoverState = null; redrawAll(null); statusEl.textContent = ''; return; }
+
+  hoverState = { clef, slot, localX, sys };
+  redrawAll(hoverState);
+
+  const { note, octave } = slotToNote(slot, ref);
+  statusEl.textContent = `→ ${note}${accidental === '#' ? '♯' : accidental === 'b' ? '♭' : '♮'}${octave}  (${clef === 'treble' ? 'Treble' : 'Bass'}, sys ${sys + 1})`;
+});
+
+grandCanvas.addEventListener('mouseleave', () => {
+  hoverState = null;
+  redrawAll(null);
+  document.getElementById('hoverNote').textContent = '';
+});
+
+// ─── Controls ──────────────────────────────────────────────────────────────
+function setMode(mode) {
+  inputMode = mode;
+  document.getElementById('mode-note').classList.toggle('active', mode === 'note');
+  document.getElementById('mode-bar').classList.toggle('active', mode === 'bar');
+  grandCanvas.style.cursor = mode === 'bar' ? 'col-resize' : 'crosshair';
+}
+function setAccidental(acc) {
+  accidental = acc;
+  ['flat','nat','sharp'].forEach(k => document.getElementById('acc-'+k).classList.remove('active'));
+  const map = { 'b': 'flat', '': 'nat', '#': 'sharp' };
+  document.getElementById('acc-' + map[acc]).classList.add('active');
+}
+
+function setDuration(dur) {
+  duration = dur;
+  ['w','h','q','e'].forEach(k => document.getElementById('dur-'+k).classList.remove('active'));
+  document.getElementById('dur-' + dur).classList.add('active');
+}
+
+function deleteLastNote() {
+  if (inputMode === 'bar' && barlines.length) {
+    barlines.pop();
+    redrawAll(hoverState);
+    return;
+  }
+  let sel = trebleNotes.findIndex(n => n.selected);
+  if (sel >= 0) { trebleNotes.splice(sel, 1); }
+  else {
+    sel = bassNotes.findIndex(n => n.selected);
+    if (sel >= 0) { bassNotes.splice(sel, 1); }
+    else if (trebleNotes.length) trebleNotes.pop();
+    else if (bassNotes.length) bassNotes.pop();
+    else if (barlines.length) barlines.pop();
+  }
+  redrawAll(hoverState);
+  updateStatus();
+}
+
+function clearAll() {
+  trebleNotes = [];
+  bassNotes = [];
+  barlines = [];
+  hoverState = null;
+  redrawAll(null);
+  document.getElementById('tabOutput').innerHTML = '<span class="hint">Place notes on the staff, then click Convert →</span>';
+  
+  updateStatus();
+}
+
+function updateStatus() {
+  document.getElementById('trebleCount').textContent = trebleNotes.length;
+  document.getElementById('bassCount').textContent = bassNotes.length;
+}
+
+function refreshOutput() {
+  if (hasConvertedOutput()) convertToTab();
+}
+
+function adjustTabTranspose(delta) {
+  tabTransposeOffset = Math.max(-12, Math.min(12, tabTransposeOffset + delta));
+  document.getElementById('tabTransposeDisplay').innerHTML = transposeLabel(tabTransposeOffset);
+  if (hasConvertedOutput()) convertToTab();
+}
+
+function resetTabTranspose() {
+  tabTransposeOffset = 0;
+  document.getElementById('tabTransposeDisplay').innerHTML = transposeLabel(0);
+  if (hasConvertedOutput()) convertToTab();
+}
+
+function onTabTuningChange() {
+  tabTuningKey = document.getElementById('tabTuningSelect').value;
+  if (hasConvertedOutput()) convertToTab();
+}
+
+function hasConvertedOutput() {
+  const el = document.getElementById('tabOutput');
+  return el.textContent.trim() && !el.querySelector('.hint');
+}
+
+function convertToTab() {
+  const allNotes = [
+    ...trebleNotes.map(n => ({ ...n, clef: 'treble' })),
+    ...bassNotes.map(n => ({ ...n, clef: 'bass' })),
+  ].sort((a, b) => a.x - b.x);
+
+  if (!allNotes.length) {
+    document.getElementById('tabOutput').innerHTML = '<span class="hint">No notes placed yet.</span>';
+    return;
+  }
+
+  const beats = [];
+  allNotes.forEach(note => {
+    const existing = beats.find(b => Math.abs(b.x - note.x) < 8);
+    if (existing) existing.notes.push(note);
+    else beats.push({ x: note.x, notes: [note] });
+  });
+
+  document.getElementById('tabOutput').textContent = buildStaffTabOutput(tabTuningKey, tabTransposeOffset + octaveOffset * 12, beats, barlines, BEATS_PER_SYS, STAFF.beatWidth);
+}
+
+function addSystem() {
+  NUM_SYSTEMS++;
+  grandCanvas.height = STAFF.sysMargin + NUM_SYSTEMS * (STAFF.sysHeight + STAFF.sysMargin);
+  redrawAll(hoverState);
+}
+
+// ─── Init ──────────────────────────────────────────────────────────────────
+// Compute how many beats fit across the staff width
+FIRST_BEAT_X = STAFF.leftPad + 20;
+const STAFF_RIGHT = grandCanvas.width - 20;
+BEATS_PER_SYS = Math.floor((STAFF_RIGHT - FIRST_BEAT_X) / STAFF.beatWidth);
+
+// Resize canvas height to exactly fit NUM_SYSTEMS
+grandCanvas.height = STAFF.sysMargin + NUM_SYSTEMS * (STAFF.sysHeight + STAFF.sysMargin);
+
+document.getElementById('mode-note').classList.add('active');
+redrawAll(null);
+updateStatus();
+</script>
+</body>
+</html>
