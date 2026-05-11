@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tab → Tab</title>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./style.css">
+<script src="tab-converter.js"></script>
+</head>
+<body>
+
+<header>
+  <h1>Tab <em>→</em> Tab</h1>
+  <a class="nav-link" href="home.html">← Staff → Tab</a>
+  <a class="nav-link" href="tab-staff.html">← Tab → Staff</a>
+</header>
+
+<main>
+  <!-- LEFT COLUMN: Tab input -->
+  <div class="left-col">
+    <div class="input-section">
+      <div class="input-controls">
+        <label>Input Tuning</label>
+        <select id="inputTuningSelect" onchange="onInputTuningChange()">
+          <optgroup label="Guitar">
+            <option value="standard" selected>Guitar — Standard:  E A D G B e</option>
+            <option value="dropD">Guitar — Drop D:  D A D G B e</option>
+            <option value="openG">Guitar — Open G:  D G D G B D</option>
+            <option value="openE">Guitar — Open E:  E B E G# B E</option>
+            <option value="dadgad">Guitar — DADGAD:  D A D G A D</option>
+            <option value="crowder">Guitar — Crowder:  E A E E B E</option>
+          </optgroup>
+          <optgroup label="Strings">
+            <option value="violin">Violin:  G D A E</option>
+            <option value="viola">Viola:  C G D A</option>
+            <option value="cello">Cello:  C G D A</option>
+          </optgroup>
+        </select>
+
+        <span class="sep"></span>
+
+        <button class="btn-clear" onclick="clearAll()">Clear</button>
+        <button class="btn-convert" onclick="convertTab()" style="margin-left:auto">Convert →</button>
+      </div>
+
+      <textarea id="tabInput" spellcheck="false"
+        placeholder="Paste or type guitar tab here in standard tuning.&#10;&#10;e|----------------|&#10;B|----------------|&#10;G|----------------|&#10;D|----------------|&#10;A|----------------|&#10;E|----------------|&#10;&#10;Multiple systems are supported — separate them with blank lines."
+        oninput="onInputChange()"></textarea>
+
+      <div class="parse-info" id="parseInfo">
+        Beats: <span id="beatCount">—</span>
+        &nbsp;·&nbsp; Strings detected: <span id="stringCount">—</span>
+        &nbsp;·&nbsp; <span id="parseStatus">ready</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT COLUMN: Tab outputs -->
+  <div class="right-col">
+    <div class="tab-section">
+      <div class="tab-header">
+        <h2>Tab Output</h2>
+        <div class="transpose-controls">
+          <label>Instrument</label>
+          <select id="tabTuningSelect" onchange="onTabTuningChange()" style="font-size:0.75rem;padding:0.3rem 0.6rem;">
+            <optgroup label="Guitar">
+              <option value="standard">Guitar — Standard:  E A D G B e</option>
+              <option value="dropD">Guitar — Drop D:  D A D G B e</option>
+              <option value="openG">Guitar — Open G:  D G D G B D</option>
+              <option value="openE">Guitar — Open E:  E B E G# B E</option>
+              <option value="dadgad">Guitar — DADGAD:  D A D G A D</option>
+              <option value="crowder">Guitar — Crowder:  E A E E B E</option>
+            </optgroup>
+            <optgroup label="Strings">
+              <option value="violin">Violin:  G D A E</option>
+              <option value="viola">Viola:  C G D A</option>
+              <option value="cello">Cello:  C G D A</option>
+            </optgroup>
+          </select>
+          <label style="margin-left:0.5rem">Octave</label>
+          <button class="transpose-btn" onclick="adjustOctave(-1)" title="Down 1 octave">−</button>
+          <div class="transpose-display" id="octaveDisplay"><span class="offset-zero">0</span></div>
+          <button class="transpose-btn" onclick="adjustOctave(1)" title="Up 1 octave">+</button>
+          <button class="transpose-reset" onclick="resetOctave()">reset</button>
+          <label style="margin-left:0.5rem">Semitones</label>
+          <button class="transpose-btn" onclick="adjustTranspose(-1)" title="Down 1 semitone">−</button>
+          <div class="transpose-display" id="transposeDisplay"><span class="offset-zero">0</span></div>
+          <button class="transpose-btn" onclick="adjustTranspose(1)" title="Up 1 semitone">+</button>
+          <button class="transpose-reset" onclick="resetTranspose()">reset</button>
+        </div>
+      </div>
+      <div class="tab-output" id="tabOutput">
+        <span class="hint">Paste tab on the left, then click Convert →</span>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="status-bar">
+  <div>Input tuning: <span id="statusInput">Standard</span></div>
+  <div>Output tuning: <span id="statusOutput">Standard</span></div>
+  <div>Transpose: <span id="statusTranspose">0 st</span></div>
+</div>
+
+<script>
+// Tuning data and conversion functions are loaded from tab-converter.js
+
+// ─── State ──────────────────────────────────────────────────────────────────
+let transposeOffset = 0;
+let octaveOffset    = 0;
+let inputTuningKey  = 'standard';
+let outputTuningKey = 'standard';
+let parsedBeats      = [];   // [{ pitches: [p0..p5 | null], barBefore: bool, width: number }]
+let parsedRowLengths = [];   // beats per input system row
+let hasOutput        = false;
+
+// ─── Tab Parsing ────────────────────────────────────────────────────────────
+// Matches a tab line: optional whitespace, string name, optional whitespace, |
+const TAB_LINE_RE = /^\s*([eEADGBbgd])\s*\|(.*)$/;
+
+function parseTabInput(text) {
+  const rawLines = text.split('\n');
+  const blocks = [];
+  let current = [];
+
+  rawLines.forEach(raw => {
+    const m = raw.match(TAB_LINE_RE);
+    if (m) {
+      current.push({ name: m[1], content: m[2] });
+    } else {
+      if (current.length >= 3) blocks.push(current);
+      current = [];
+    }
+  });
+  if (current.length >= 3) blocks.push(current);
+
+  const allBeats = [];
+  const rowLengths = [];
+  blocks.forEach(block => {
+    const before = allBeats.length;
+    parseBlock(block, allBeats);
+    rowLengths.push(allBeats.length - before);
+  });
+  return { beats: allBeats, rowLengths };
+}
+
+function resolveStringIndex(name, posInBlock, blockLen, inputKey) {
+  const numStrings = TUNING_OPEN[inputKey].length;
+  const map6 = { e: 5, E: null, B: 4, b: 4, G: 3, g: 3, D: 2, d: 2, A: 1, a: 1 };
+  if (numStrings === 4) return numStrings - 1 - posInBlock;
+  const canonical = map6[name];
+  if (canonical !== null && canonical !== undefined) return canonical;
+  return posInBlock < blockLen / 2 ? 5 : 0;
+}
+
+function parseBlock(block, allBeats) {
+  const inputKey = inputTuningKey;
+  const numStrings = TUNING_OPEN[inputKey].length;
+
+  const lines = block.map((l, pos) => ({
+    name: l.name,
+    content: l.content,
+    si: resolveStringIndex(l.name, pos, block.length, inputKey),
+  }));
+
+  const maxLen = Math.max(...lines.map(l => l.content.length), 0);
+
+  const barCols = new Set();
+  for (let col = 0; col < maxLen; col++) {
+    if (lines.every(l => (l.content[col] || '') === '|')) barCols.add(col);
+  }
+
+  const beatCols = [];
+  let col = 0;
+  while (col < maxLen) {
+    if (barCols.has(col)) { col++; continue; }
+    const hasDigit = lines.some(l => /\d/.test(l.content[col] || ''));
+    const hasX     = lines.some(l => (l.content[col] || '') === 'x');
+    if (!hasDigit && !hasX) { col++; continue; }
+
+    const pitches = new Array(numStrings).fill(null);
+    let fretLen = 1;
+    lines.forEach(l => {
+      if (l.si < 0 || l.si >= numStrings) return;
+      const ch = l.content[col] || '';
+      if (ch === 'x') return;
+      if (!/\d/.test(ch)) return;
+      let numStr = ch;
+      const ch2 = l.content[col + 1] || '';
+      if (/\d/.test(ch2)) { numStr += ch2; fretLen = Math.max(fretLen, 2); }
+      pitches[l.si] = openPitch(inputKey, l.si) + parseInt(numStr, 10);
+    });
+
+    beatCols.push({ col, pitches, fretLen });
+    col += fretLen;
+  }
+
+  // Second pass: compute column widths and barBefore using beatCols (not allBeats)
+  beatCols.forEach((bc, i) => {
+    // Width = chars until next beat, trimming any trailing barline columns
+    let end = i + 1 < beatCols.length ? beatCols[i + 1].col : maxLen;
+    while (end > bc.col + bc.fretLen && barCols.has(end - 1)) end--;
+    bc.width = end - bc.col;
+
+    // barBefore: is there a barline column between the previous beat and this one?
+    if (i > 0) {
+      const prevEnd = beatCols[i - 1].col + beatCols[i - 1].fretLen;
+      bc.barBefore = false;
+      for (let c = prevEnd; c < bc.col; c++) {
+        if (barCols.has(c)) { bc.barBefore = true; break; }
+      }
+    } else {
+      bc.barBefore = false;
+    }
+  });
+
+  beatCols.forEach(bc => allBeats.push({ pitches: bc.pitches, barBefore: bc.barBefore, width: bc.width }));
+}
+
+
+// ─── Controls ───────────────────────────────────────────────────────────────
+function refreshOutput() {
+  if (hasOutput) renderOutput();
+}
+
+function adjustTranspose(delta) {
+  transposeOffset = Math.max(-12, Math.min(12, transposeOffset + delta));
+  const el = document.getElementById('transposeDisplay');
+  if (transposeOffset === 0) {
+    el.innerHTML = '<span class="offset-zero">0</span>';
+  } else {
+    const arrow = transposeOffset > 0 ? '↑' : '↓';
+    const sign  = transposeOffset > 0 ? '+' : '';
+    el.innerHTML = `<span class="offset-val">${arrow}${Math.abs(transposeOffset)} st &nbsp;(${sign}${transposeOffset})</span>`;
+  }
+  document.getElementById('statusTranspose').textContent = transposeOffset + ' st';
+  if (hasOutput) renderOutput();
+}
+
+function resetTranspose() {
+  transposeOffset = 0;
+  document.getElementById('transposeDisplay').innerHTML = '<span class="offset-zero">0</span>';
+  document.getElementById('statusTranspose').textContent = '0 st';
+  if (hasOutput) renderOutput();
+}
+
+function onInputTuningChange() {
+  inputTuningKey = document.getElementById('inputTuningSelect').value;
+  document.getElementById('statusInput').textContent = TUNING_LABEL[inputTuningKey];
+  onInputChange();
+}
+
+function onTabTuningChange() {
+  outputTuningKey = document.getElementById('tabTuningSelect').value;
+  document.getElementById('statusOutput').textContent = TUNING_LABEL[outputTuningKey];
+  if (hasOutput) renderOutput();
+}
+
+function onInputChange() {
+  const text = document.getElementById('tabInput').value;
+  if (!text.trim()) {
+    document.getElementById('beatCount').textContent = '—';
+    document.getElementById('stringCount').textContent = '—';
+    document.getElementById('parseStatus').innerHTML = 'ready';
+    parsedBeats = [];
+    return;
+  }
+
+  try {
+    const { beats, rowLengths } = parseTabInput(text);
+    parsedBeats = beats;
+    parsedRowLengths = rowLengths;
+
+    // Count distinct string indices seen
+    const seenStrings = new Set();
+    beats.forEach(b => b.pitches.forEach((p, si) => { if (p !== null) seenStrings.add(si); }));
+
+    document.getElementById('beatCount').textContent = beats.length;
+    document.getElementById('stringCount').textContent = seenStrings.size;
+    document.getElementById('parseStatus').innerHTML =
+      beats.length > 0
+        ? '<span class="ok">✓ parsed</span>'
+        : '<span class="err">no beats found — check format</span>';
+  } catch (e) {
+    document.getElementById('parseStatus').innerHTML = '<span class="err">parse error</span>';
+  }
+}
+
+function renderOutput() {
+  const el = document.getElementById('tabOutput');
+  if (!parsedBeats.length) {
+    el.innerHTML = '<span class="hint">No beats found in input. Check the format guide.</span>';
+    hasOutput = false;
+    return;
+  }
+  el.textContent = buildTabOutput(parsedBeats, outputTuningKey, transposeOffset + octaveOffset * 12, parsedRowLengths);
+  hasOutput = true;
+}
+
+function convertTab() {
+  onInputChange();
+  renderOutput();
+}
+
+function clearAll() {
+  document.getElementById('tabInput').value = '';
+  document.getElementById('tabOutput').innerHTML = '<span class="hint">Paste tab on the left, then click Convert →</span>';
+  document.getElementById('beatCount').textContent = '—';
+  document.getElementById('stringCount').textContent = '—';
+  document.getElementById('parseStatus').innerHTML = 'ready';
+  parsedBeats = [];
+  parsedRowLengths = [];
+  hasOutput = false;
+}
+
+
+// ─── Init ────────────────────────────────────────────────────────────────────
+document.getElementById('statusInput').textContent = TUNING_LABEL[inputTuningKey];
+document.getElementById('statusOutput').textContent = TUNING_LABEL[outputTuningKey];
+</script>
+</body>
+</html>

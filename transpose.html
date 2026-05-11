@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chord Transposer</title>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  /* Page-specific overrides */
+  body { overflow-y: auto; }
+
+  main {
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem 2rem;
+    gap: 1rem;
+    overflow: visible;
+  }
+
+  /* ── Top panel ───────────────────────────────────────── */
+  .top-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 1rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .top-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink3);
+    white-space: nowrap;
+  }
+
+  /* Key picker */
+  .key-picker { position: relative; }
+
+  .key-display {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    width: 62px;
+    height: 62px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 26px;
+    font-weight: 500;
+    color: var(--ink);
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 0.15s;
+  }
+  .key-display:hover { border-color: var(--gold); color: var(--gold); }
+
+  .key-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    padding: 6px;
+    z-index: 100;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 3px;
+    width: 188px;
+  }
+  .key-dropdown.hidden { display: none; }
+
+  .key-option {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 6px 0;
+    text-align: center;
+    color: var(--ink2);
+    cursor: pointer;
+    transition: all 0.1s;
+  }
+  .key-option:hover { color: var(--ink); border-color: var(--border2); }
+  .key-option.active { color: var(--gold); border-color: var(--gold); background: rgba(200,168,75,0.08); }
+
+  /* Scale degrees strip */
+  .scale-strip {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 12px;
+    display: flex;
+    gap: 6px;
+  }
+
+  .degree-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .roman {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--ink3);
+    letter-spacing: 0.05em;
+  }
+
+  .degree-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--ink2);
+    white-space: nowrap;
+  }
+
+  .results-right .degree-box {
+    width: 62px;
+    height: 62px;
+    font-size: 1rem;
+  }
+
+  .scale-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .scale-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .scale-row-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    color: var(--ink3);
+    letter-spacing: 0.04em;
+    width: 148px;
+    flex-shrink: 0;
+  }
+
+  /* Transpose button — reuse .btn-convert from style.css */
+
+  /* ── Results panel ───────────────────────────────────── */
+  .results-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 1.75rem 2rem;
+    display: flex;
+    /* flex-direction: column; */
+    gap: 1.5rem;
+  }
+
+  .results-divider {
+    width: 1px;
+    background: var(--border2);
+    align-self: stretch;
+    flex-shrink: 0;
+  }
+
+  .output-scale-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink3);
+    margin-bottom: 0.5rem;
+  }
+
+  .results-empty {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--ink3);
+    font-style: italic;
+  }
+
+  .chords-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .chord-row {
+    display: flex;
+    gap: 1.5rem;
+  }
+
+  .chord-group {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 1.25rem;
+  }
+
+  .chord-group-label {
+    font-family: 'EB Garamond', Georgia, serif;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--ink2);
+    text-align: right;
+    width: 110px;
+    flex-shrink: 0;
+  }
+
+  .chord-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .orig-roman {
+    font-family: 'EB Garamond', Georgia, serif;
+    font-size: 2.1rem;
+    font-style: italic;
+    color: var(--ink2);
+  }
+
+  .orig-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--ink3);
+  }
+
+  .result-box {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    width: 150px;
+    height: 150px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 4em;
+    font-weight: 500;
+    color: var(--ink);
+    line-height: 1;
+    position: relative;
+  }
+
+  .result-spell {
+    position: absolute;
+    bottom: 7px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: var(--gold);
+    letter-spacing: 0.03em;
+  }
+
+  .result-box .q {
+    font-size: 0.42em;
+    font-weight: 400;
+    color: var(--ink2);
+    vertical-align: sub;
+    margin-left: 1px;
+  }
+
+  /* ── Capo suggestions ───────────────────────────────── */
+  .results-right {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .capo-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+  }
+
+  .capo-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .capo-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+  }
+
+  .capo-formation {
+    color: var(--ink2);
+    width: 64px;
+  }
+
+  .capo-fret {
+    color: var(--gold);
+    font-weight: 500;
+  }
+
+  .capo-open {
+    color: var(--ink3);
+    font-style: italic;
+  }
+
+  .capo-chord-strip {
+    display: flex;
+    gap: 4px;
+  }
+
+  .capo-chord-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    width: 46px;
+    height: 46px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    font-weight: 500;
+    color: var(--ink2);
+    white-space: nowrap;
+  }
+
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Chord <em>Transposer</em></h1>
+  <a class="nav-link" href="home.html">← Staff → Tab</a>
+  <a class="nav-link" href="tab-converter.html">← Tab → Tab</a>
+</header>
+
+<main>
+
+  <div class="top-panel">
+    <span class="top-label">Original Key</span>
+
+    <div class="key-picker" id="origPicker">
+      <div class="key-display" id="origDisplay" onclick="toggleDrop('orig')">C</div>
+      <div class="key-dropdown hidden" id="origDrop"></div>
+    </div>
+
+    <div class="scale-strip" id="scaleDegrees"></div>
+
+    <span class="top-label">New Key</span>
+
+    <div class="key-picker" id="newPicker">
+      <div class="key-display" id="newDisplay" onclick="toggleDrop('new')">G</div>
+      <div class="key-dropdown hidden" id="newDrop"></div>
+    </div>
+
+    <button class="btn-convert" onclick="doTranspose()">Transpose →</button>
+  </div>
+
+  <div class="results-panel" id="results">
+    <span class="results-empty">Select keys and click Transpose</span>
+  </div>
+
+</main>
+
+<div class="status-bar" id="statusBar">
+  <div>Original: <span id="statusOrig">C major</span></div>
+  <div>New key: <span id="statusNew">G major</span></div>
+  <div id="statusInterval" style="margin-left:auto"></div>
+</div>
+
+<script>
+// ── Music theory ────────────────────────────────────────────────────────────
+const KEYS        = ['C','G','D','A','E','B','F#','F','Bb','Eb','Ab','Db'];
+const FLAT_KEYS   = new Set(['F','Bb','Eb','Ab','Db']);
+const SHARP_NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const FLAT_NOTES  = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+const INTERVALS   = [0, 2, 4, 5, 7, 9, 11];
+const QUALITIES   = ['', 'm', 'm', '', '', 'm', 'dim'];
+const ROMANS      = ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°'];
+
+// Result display order: [I,IV,V] then [vi,ii,iii] then [vii°]
+const LAYOUT = [[0,3,4],[5,1,2],[6]];
+
+
+// ── State ───────────────────────────────────────────────────────────────────
+let origKey = 'C';
+let newKey  = 'G';
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function noteIndex(n) {
+  const i = SHARP_NOTES.indexOf(n);
+  return i !== -1 ? i : FLAT_NOTES.indexOf(n);
+}
+
+function scaleChords(key) {
+  const root  = noteIndex(key);
+  const notes = FLAT_KEYS.has(key) ? FLAT_NOTES : SHARP_NOTES;
+  return INTERVALS.map((iv, i) => ({
+    root:    notes[(root + iv) % 12],
+    quality: QUALITIES[i],
+    roman:   ROMANS[i],
+  }));
+}
+
+function name(c) { return c.root + c.quality; }
+
+function chordHTML(str) {
+  if (str.endsWith('dim')) return `${str.slice(0,-3)}<span class="q">dim</span>`;
+  if (str.endsWith('m'))   return `${str.slice(0,-1)}<span class="q">m</span>`;
+  return str;
+}
+
+
+// ── Dropdowns ────────────────────────────────────────────────────────────────
+function buildDropdowns() {
+  ['orig','new'].forEach(w => {
+    document.getElementById(`${w}Drop`).innerHTML = KEYS.map(k =>
+      `<div class="key-option" data-key="${k}" onclick="selectKey('${w}','${k}')">${k}</div>`
+    ).join('');
+  });
+  refreshActive();
+}
+
+function toggleDrop(which) {
+  const dd = document.getElementById(`${which}Drop`);
+  const wasHidden = dd.classList.contains('hidden');
+  document.querySelectorAll('.key-dropdown').forEach(d => d.classList.add('hidden'));
+  if (wasHidden) dd.classList.remove('hidden');
+}
+
+function selectKey(which, key) {
+  if (which === 'orig') {
+    origKey = key;
+    document.getElementById('origDisplay').textContent = key;
+    renderScaleDegrees();
+    document.getElementById('statusOrig').textContent = key + ' major';
+  } else {
+    newKey = key;
+    document.getElementById('newDisplay').textContent = key;
+    document.getElementById('statusNew').textContent = key + ' major';
+  }
+  document.getElementById(`${which}Drop`).classList.add('hidden');
+  refreshActive();
+}
+
+function refreshActive() {
+  document.querySelectorAll('#origDrop .key-option').forEach(el =>
+    el.classList.toggle('active', el.dataset.key === origKey));
+  document.querySelectorAll('#newDrop .key-option').forEach(el =>
+    el.classList.toggle('active', el.dataset.key === newKey));
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.key-picker'))
+    document.querySelectorAll('.key-dropdown').forEach(d => d.classList.add('hidden'));
+});
+
+// ── Scale degrees strip ──────────────────────────────────────────────────────
+function renderScaleDegrees() {
+  document.getElementById('scaleDegrees').innerHTML = scaleChords(origKey).map(c => `
+    <div class="degree-item">
+      <span class="roman">${c.roman}</span>
+      <div class="degree-box">${name(c)}</div>
+    </div>
+  `).join('');
+}
+
+// ── Chord spelling ───────────────────────────────────────────────────────────
+function chordSpelling(root, quality, useFlats) {
+  const ri = noteIndex(root);
+  const ns = useFlats ? FLAT_NOTES : SHARP_NOTES;
+  const intervals = quality === 'dim' ? [0,3,6] : quality === 'm' ? [0,3,7] : [0,4,7];
+  return intervals.map(iv => ns[(ri + iv) % 12]).join(' - ');
+}
+
+// ── Transpose ────────────────────────────────────────────────────────────────
+function doTranspose() {
+  const orig = scaleChords(origKey);
+  const next = scaleChords(newKey);
+  const useFlats = FLAT_KEYS.has(newKey);
+
+  const ROW_LABELS = ['Major', 'Minor', 'Diminished'];
+
+  const gridRows = LAYOUT.map((row, ri) =>
+    `<div class="chord-group">
+      <span class="chord-group-label">${ROW_LABELS[ri]}</span>
+      <div class="chord-row">${row.map(i => `
+        <div class="chord-item">
+          <span class="orig-label"><span class="orig-roman">${orig[i].roman}</span>/${name(orig[i])}</span>
+          <div class="result-box">
+            ${chordHTML(name(next[i]))}
+            <span class="result-spell">${chordSpelling(next[i].root, next[i].quality, useFlats)}</span>
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>`
+  ).join('');
+
+  const relMinorRoot = next[5].root;
+
+  function fromRoot(root, intervals) {
+    const ri = noteIndex(root);
+    const ns = useFlats ? FLAT_NOTES : SHARP_NOTES;
+    return intervals.map(iv => ns[(ri + iv) % 12]);
+  }
+
+  const scaleGroups = [
+    { label: `${newKey} Major`,                    notes: [0,1,2,3,4,5,6].map(i => next[i].root) },
+    { label: `${relMinorRoot}m Relative Minor`,    notes: [5,6,0,1,2,3,4].map(i => next[i].root) },
+    { label: `${newKey} Major Pentatonic`,         notes: [0,1,2,4,5].map(i => next[i].root) },
+    { label: `${relMinorRoot}m Minor Pentatonic`,  notes: [5,0,1,2,4].map(i => next[i].root) },
+    { label: `${newKey} Major Blues`,              notes: fromRoot(newKey,        [0,2,3,4,7,9]) },
+    { label: `${relMinorRoot}m Minor Blues`,       notes: fromRoot(relMinorRoot,  [0,3,5,6,7,10]) },
+  ];
+
+  const scalesHTML = scaleGroups.map(sg => `
+    <div class="scale-row">
+      <span class="scale-row-label">${sg.label}</span>
+      <div class="scale-strip" style="display:inline-flex">
+        ${sg.notes.map(n => `<div class="degree-box">${n}</div>`).join('')}
+      </div>
+    </div>`).join('');
+
+  const capoSuggestions = getCapoSuggestions(newKey);
+  const capoHTML = capoSuggestions.map(s => {
+    const formationChords = scaleChords(s.formation);
+    const chordBoxes = formationChords.map((c, i) => `
+      <div class="degree-item">
+        <span class="roman">${ROMANS[i]}</span>
+        <div class="capo-chord-box">${name(c)}</div>
+      </div>`
+    ).join('');
+    return `
+    <div class="capo-item">
+      <div class="capo-header">
+        <span class="capo-formation">${s.formation} shape</span>
+        ${s.capoFret === 0
+          ? '<span class="capo-open">open — no capo</span>'
+          : `<span class="capo-fret">capo ${s.capoFret}</span>`}
+      </div>
+      <div class="capo-chord-strip">${chordBoxes}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('results').innerHTML =
+    `<div class="chords-grid">${gridRows}</div>` +
+    `<div class="results-divider"></div>` +
+    `<div class="results-right">
+      <div>
+        <div class="output-scale-label">Scales</div>
+        <div class="scale-rows">${scalesHTML}</div>
+      </div>
+      <div>
+        
+        
+      </div>
+    </div>`+
+    `<div class="results-divider"></div>`+
+    `<div class="capo">
+      <div class="output-scale-label">Capo options</div>
+      <div class="capo-list">${capoHTML}</div></div>`;
+
+}
+
+// ── Capo suggestions ────────────────────────────────────────────────────────
+function getCapoSuggestions(targetKey) {
+  const formations = ['E', 'A', 'D', 'G', 'C'];
+  const targetIdx  = noteIndex(targetKey);
+  return formations
+    .map(f => ({ formation: f, capoFret: ((targetIdx - noteIndex(f)) % 12 + 12) % 12 }))
+    .filter(s => s.capoFret <= 7)
+    .sort((a, b) => a.capoFret - b.capoFret);
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+buildDropdowns();
+renderScaleDegrees();
+doTranspose();
+</script>
+</body>
+</html>
